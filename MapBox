@@ -70,7 +70,7 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
     await _map!.location.updateSettings(LocationComponentSettings(
       enabled: true,
       pulsingEnabled: true,
-      locationPuck: LocationPuck2D(),
+      locationPuck: LocationPuck(locationPuck2D: LocationPuck2D()),
     ));
   }
 
