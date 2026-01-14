@@ -19,6 +19,8 @@ class MapboxBasicMap extends StatefulWidget {
     required this.lat,
     required this.lng,
     this.zoom = 12.0,
+    this.showZoomControls = true,
+    this.showLocateButton = true,
   });
 
   final double? width;
@@ -28,6 +30,8 @@ class MapboxBasicMap extends StatefulWidget {
   final double lat;
   final double lng;
   final double zoom;
+  final bool showZoomControls;
+  final bool showLocateButton;
 
   @override
   State<MapboxBasicMap> createState() => _MapboxBasicMapState();
@@ -35,6 +39,7 @@ class MapboxBasicMap extends StatefulWidget {
 
 class _MapboxBasicMapState extends State<MapboxBasicMap> {
   MapboxMap? _map;
+  static const double _controlSize = 40.0;
 
   @override
   void initState() {
@@ -50,6 +55,49 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
     ));
   }
 
+  Future<void> _zoomBy(double delta) async {
+    if (_map == null) {
+      return;
+    }
+    final cameraState = await _map!.getCameraState();
+    await _map!.setCamera(CameraOptions(zoom: cameraState.zoom + delta));
+  }
+
+  Future<void> _enableLocation() async {
+    if (_map == null) {
+      return;
+    }
+    await _map!.location.updateSettings(LocationComponentSettings(
+      enabled: true,
+      pulsingEnabled: true,
+      locationPuck: LocationPuck2D(),
+    ));
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: _controlSize,
+      height: _controlSize,
+      child: Material(
+        color: FlutterFlowTheme.of(context).secondaryBackground,
+        shape: const CircleBorder(),
+        elevation: 2,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Icon(
+            icon,
+            size: 20,
+            color: FlutterFlowTheme.of(context).primaryText,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -57,9 +105,41 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
       height: widget.height,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: MapWidget(
-          key: const ValueKey('mapbox_basic_map'),
-          onMapCreated: _onMapCreated,
+        child: Stack(
+          children: [
+            MapWidget(
+              key: const ValueKey('mapbox_basic_map'),
+              onMapCreated: _onMapCreated,
+            ),
+            if (widget.showZoomControls || widget.showLocateButton)
+              Positioned(
+                right: 12,
+                bottom: 12,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.showZoomControls) ...[
+                      _buildControlButton(
+                        icon: Icons.add,
+                        onPressed: () => _zoomBy(1.0),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildControlButton(
+                        icon: Icons.remove,
+                        onPressed: () => _zoomBy(-1.0),
+                      ),
+                    ],
+                    if (widget.showZoomControls && widget.showLocateButton)
+                      const SizedBox(height: 8),
+                    if (widget.showLocateButton)
+                      _buildControlButton(
+                        icon: Icons.my_location,
+                        onPressed: _enableLocation,
+                      ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ),
     );
