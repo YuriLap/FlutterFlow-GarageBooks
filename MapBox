@@ -1,0 +1,70 @@
+// Automatic FlutterFlow imports
+import '/backend/backend.dart';
+import '/flutter_flow/flutter_flow_theme.dart';
+import '/flutter_flow/flutter_flow_util.dart';
+import '/custom_code/widgets/index.dart'; // Imports other custom widgets
+import '/flutter_flow/custom_functions.dart'; // Imports custom functions
+import 'package:flutter/material.dart';
+// Begin custom widget code
+// DO NOT REMOVE OR MODIFY THE CODE ABOVE!
+
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+
+class MapboxBasicMap extends StatefulWidget {
+  const MapboxBasicMap({
+    super.key,
+    this.width,
+    this.height,
+    required this.accessToken,
+    required this.lat,
+    required this.lng,
+    this.zoom = 12.0,
+  });
+
+  final double? width;
+  final double? height;
+
+  final String accessToken;
+  final double lat;
+  final double lng;
+  final double zoom;
+
+  @override
+  State<MapboxBasicMap> createState() => _MapboxBasicMapState();
+}
+
+class _MapboxBasicMapState extends State<MapboxBasicMap> {
+  MapboxMap? _map;
+
+  @override
+  void initState() {
+    super.initState();
+    MapboxOptions.setAccessToken(widget.accessToken);
+  }
+
+  void _onMapCreated(MapboxMap mapboxMap) async {
+    _map = mapboxMap;
+    await _map!.setCamera(CameraOptions(
+      center: Point(coordinates: Position(widget.lng, widget.lat)),
+      zoom: widget.zoom,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: MapWidget(
+          key: const ValueKey('mapbox_basic_map'),
+          onMapCreated: _onMapCreated,
+        ),
+      ),
+    );
+  }
+}
+
+// Set your widget name, define your parameter, and then add the
+// boilerplate code using the green button on the right!
