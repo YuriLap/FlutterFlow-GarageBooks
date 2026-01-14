@@ -39,6 +39,7 @@ class MapboxBasicMap extends StatefulWidget {
 
 class _MapboxBasicMapState extends State<MapboxBasicMap> {
   MapboxMap? _map;
+  OnIndicatorPositionChangedListener? _indicatorListener;
   static const double _controlSize = 40.0;
 
   @override
@@ -72,20 +73,23 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
       pulsingEnabled: true,
       locationPuck: LocationPuck(locationPuck2D: LocationPuck2D()),
     ));
-    final lastKnownLocation = await _map!.location.getLastKnownLocation();
-    if (lastKnownLocation == null) {
-      return;
-    }
-    final cameraState = await _map!.getCameraState();
-    await _map!.setCamera(CameraOptions(
-      center: Point(
-        coordinates: Position(
-          lastKnownLocation.longitude,
-          lastKnownLocation.latitude,
-        ),
-      ),
-      zoom: cameraState.zoom,
-    ));
+    _indicatorListener ??=
+        OnIndicatorPositionChangedListener((Point point) async {
+      if (_map == null) {
+        return;
+      }
+      final cameraState = await _map!.getCameraState();
+      await _map!.setCamera(CameraOptions(
+        center: point,
+        zoom: cameraState.zoom,
+      ));
+      if (_indicatorListener != null) {
+        _map!.location
+            .removeOnIndicatorPositionChangedListener(_indicatorListener!);
+        _indicatorListener = null;
+      }
+    });
+    _map!.location.addOnIndicatorPositionChangedListener(_indicatorListener!);
   }
 
   Widget _buildControlButton({
@@ -157,6 +161,16 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    if (_map != null && _indicatorListener != null) {
+      _map!.location
+          .removeOnIndicatorPositionChangedListener(_indicatorListener!);
+      _indicatorListener = null;
+    }
+    super.dispose();
   }
 }
 
