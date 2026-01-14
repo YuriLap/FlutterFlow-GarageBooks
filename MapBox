@@ -72,6 +72,20 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
       pulsingEnabled: true,
       locationPuck: LocationPuck(locationPuck2D: LocationPuck2D()),
     ));
+    final lastKnownLocation = await _map!.location.getLastKnownLocation();
+    if (lastKnownLocation == null) {
+      return;
+    }
+    final cameraState = await _map!.getCameraState();
+    await _map!.setCamera(CameraOptions(
+      center: Point(
+        coordinates: Position(
+          lastKnownLocation.longitude,
+          lastKnownLocation.latitude,
+        ),
+      ),
+      zoom: cameraState.zoom,
+    ));
   }
 
   Widget _buildControlButton({
