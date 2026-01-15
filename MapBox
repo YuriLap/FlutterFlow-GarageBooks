@@ -8,90 +8,186 @@ import 'package:flutter/material.dart';
 // Begin custom widget code
 // DO NOT REMOVE OR MODIFY THE CODE ABOVE!
 
+// Custom imports
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+// IMPORTANT: alias geotypes so Position doesn't collide with Geolocator's Position
+import 'package:geotypes/geotypes.dart' as gt;
 
-class MapboxBasicMap extends StatefulWidget {
-  const MapboxBasicMap({
+class MapboxBasicWidget extends StatefulWidget {
+  const MapboxBasicWidget({
     super.key,
     this.width,
     this.height,
     required this.accessToken,
-    required this.lat,
-    required this.lng,
-    this.zoom = 12.0,
-    this.showZoomControls = true,
-    this.showLocateButton = true,
+    this.initialLat = 0.0,
+    this.initialLng = 0.0,
+    this.initialZoom = 11.0,
+    this.minZoom = 0.0,
+    this.maxZoom = 22.0,
+    this.locateZoom = 15.5,
+    this.showDebugOverlay = false,
   });
 
   final double? width;
   final double? height;
 
   final String accessToken;
-  final double lat;
-  final double lng;
-  final double zoom;
-  final bool showZoomControls;
-  final bool showLocateButton;
+
+  final double initialLat;
+  final double initialLng;
+  final double initialZoom;
+
+  final double minZoom;
+  final double maxZoom;
+
+  final double locateZoom;
+
+  final bool showDebugOverlay;
 
   @override
-  State<MapboxBasicMap> createState() => _MapboxBasicMapState();
+  State<MapboxBasicWidget> createState() => _MapboxBasicWidgetState();
 }
 
-class _MapboxBasicMapState extends State<MapboxBasicMap> {
-  MapboxMap? _map;
-  static const double _controlSize = 40.0;
+class _MapboxBasicWidgetState extends State<MapboxBasicWidget> {
+  MapboxMap? _mapboxMap;
+  bool _tokenApplied = false;
+  bool _locating = false;
 
   @override
   void initState() {
     super.initState();
-    MapboxOptions.setAccessToken(widget.accessToken);
+    _applyTokenIfNeeded();
   }
 
-  void _onMapCreated(MapboxMap mapboxMap) async {
-    _map = mapboxMap;
-    await _map!.setCamera(CameraOptions(
-      center: Point(coordinates: Position(widget.lng, widget.lat)),
-      zoom: widget.zoom,
-    ));
+  @override
+  void didUpdateWidget(covariant MapboxBasicWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.accessToken != widget.accessToken) {
+      _tokenApplied = false;
+      _applyTokenIfNeeded();
+    }
+  }
+
+  void _applyTokenIfNeeded() {
+    if (_tokenApplied) return;
+    final t = widget.accessToken.trim();
+    if (t.isEmpty) return;
+
+    try {
+      MapboxOptions.setAccessToken(t);
+      _tokenApplied = true;
+    } catch (_) {
+      _tokenApplied = false;
+    }
+  }
+
+  void _onMapCreated(MapboxMap mapboxMap) {
+    _mapboxMap = mapboxMap;
+
+    // Enable Mapbox "blue dot" (location puck)
+    try {
+      mapboxMap.location.updateSettings(
+        LocationComponentSettings(
+          enabled: true,
+          pulsingEnabled: true,
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> _zoomBy(double delta) async {
-    if (_map == null) {
-      return;
-    }
-    final cameraState = await _map!.getCameraState();
-    await _map!.setCamera(CameraOptions(zoom: cameraState.zoom + delta));
+    final map = _mapboxMap;
+    if (map == null) return;
+
+    final state = await map.getCameraState();
+
+    double nextZoom = state.zoom + delta;
+    if (nextZoom < widget.minZoom) nextZoom = widget.minZoom;
+    if (nextZoom > widget.maxZoom) nextZoom = widget.maxZoom;
+
+    map.setCamera(
+      CameraOptions(
+        center: state.center,
+        bearing: state.bearing,
+        pitch: state.pitch,
+        zoom: nextZoom,
+      ),
+    );
   }
 
-  Future<void> _enableLocation() async {
-    if (_map == null) {
-      return;
-    }
-    await _map!.location.updateSettings(LocationComponentSettings(
-      enabled: true,
-      pulsingEnabled: true,
-    ));
-  }
+  Future<void> _locateMe() async {
+    final map = _mapboxMap;
+    if (map == null || _locating) return;
 
-  Widget _buildControlButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      width: _controlSize,
-      height: _controlSize,
-      child: Material(
-        color: FlutterFlowTheme.of(context).secondaryBackground,
-        shape: const CircleBorder(),
-        elevation: 2,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onPressed,
-          child: Icon(
-            icon,
-            size: 20,
-            color: FlutterFlowTheme.of(context).primaryText,
+    setState(() => _locating = true);
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('Location Services are OFF');
+        return;
+      }
+
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied) {
+        debugPrint('Location permission denied');
+        return;
+      }
+      if (perm == LocationPermission.deniedForever) {
+        debugPrint('Location permission denied forever');
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+      );
+
+      map.flyTo(
+        CameraOptions(
+          center: Point(
+            coordinates: gt.Position(pos.longitude, pos.latitude), // <-- fixed
           ),
+          zoom: widget.locateZoom,
+        ),
+        MapAnimationOptions(duration: 900),
+      );
+
+      // Keep puck enabled
+      try {
+        map.location.updateSettings(
+          LocationComponentSettings(
+            enabled: true,
+            pulsingEnabled: true,
+          ),
+        );
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  Widget _circleBtn({
+    required Widget child,
+    required VoidCallback onTap,
+    required String semanticsLabel,
+    bool disabled = false,
+  }) {
+    return Material(
+      color: Colors.white.withOpacity(0.92),
+      elevation: 6,
+      shadowColor: Colors.black.withOpacity(0.25),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: disabled ? null : onTap,
+        child: Semantics(
+          label: semanticsLabel,
+          button: true,
+          child: SizedBox(width: 52, height: 52, child: Center(child: child)),
         ),
       ),
     );
@@ -99,51 +195,84 @@ class _MapboxBasicMapState extends State<MapboxBasicMap> {
 
   @override
   Widget build(BuildContext context) {
+    final cameraOptions = CameraOptions(
+      center: Point(
+        coordinates:
+            gt.Position(widget.initialLng, widget.initialLat), // <-- fixed
+      ),
+      zoom: widget.initialZoom,
+    );
+
+    final mapKey = ValueKey(
+      'mapbox_basic_${widget.initialLat}_${widget.initialLng}_${widget.initialZoom}_${widget.accessToken.hashCode}',
+    );
+
     return SizedBox(
       width: widget.width,
       height: widget.height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            MapWidget(
-              key: const ValueKey('mapbox_basic_map'),
-              onMapCreated: _onMapCreated,
+      child: Stack(
+        children: [
+          MapWidget(
+            key: mapKey,
+            cameraOptions: cameraOptions,
+            onMapCreated: _onMapCreated,
+          ),
+          Positioned(
+            right: 16,
+            bottom: 20,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _circleBtn(
+                  semanticsLabel: 'Locate me',
+                  onTap: _locateMe,
+                  disabled: _locating,
+                  child: _locating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location,
+                          size: 22, color: Colors.black87),
+                ),
+                const SizedBox(height: 14),
+                _circleBtn(
+                  semanticsLabel: 'Zoom in',
+                  onTap: () => _zoomBy(1.0),
+                  child: const Icon(Icons.add, size: 22, color: Colors.black87),
+                ),
+                const SizedBox(height: 10),
+                _circleBtn(
+                  semanticsLabel: 'Zoom out',
+                  onTap: () => _zoomBy(-1.0),
+                  child:
+                      const Icon(Icons.remove, size: 22, color: Colors.black87),
+                ),
+              ],
             ),
-            if (widget.showZoomControls || widget.showLocateButton)
-              Positioned(
-                right: 12,
-                bottom: 12,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.showZoomControls) ...[
-                      _buildControlButton(
-                        icon: Icons.add,
-                        onPressed: () => _zoomBy(1.0),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildControlButton(
-                        icon: Icons.remove,
-                        onPressed: () => _zoomBy(-1.0),
-                      ),
-                    ],
-                    if (widget.showZoomControls && widget.showLocateButton)
-                      const SizedBox(height: 8),
-                    if (widget.showLocateButton)
-                      _buildControlButton(
-                        icon: Icons.my_location,
-                        onPressed: _enableLocation,
-                      ),
-                  ],
+          ),
+          if (widget.showDebugOverlay)
+            Positioned(
+              left: 10,
+              top: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _tokenApplied
+                      ? 'Mapbox: token OK'
+                      : 'Mapbox: token NOT applied',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 }
-
-// Set your widget name, define your parameter, and then add the
-// boilerplate code using the green button on the right!
