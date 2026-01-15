@@ -85,6 +85,13 @@ class _MapboxBasicWidgetState extends State<MapboxBasicWidget> {
   }
 
   void _onMapCreated(MapboxMap mapboxMap) {
+    final previousMap = _mapboxMap;
+    if (previousMap != null && previousMap != mapboxMap) {
+      previousMap.gestures.removeOnMapLongClickListener(_handleMapLongClick);
+      _pointAnnotationManager = null;
+      _activePin = null;
+    }
+
     _mapboxMap = mapboxMap;
 
     // Enable Mapbox "blue dot" (location puck)
