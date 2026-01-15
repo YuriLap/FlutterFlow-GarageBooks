@@ -51,6 +51,8 @@ class MapboxBasicWidget extends StatefulWidget {
 
 class _MapboxBasicWidgetState extends State<MapboxBasicWidget> {
   MapboxMap? _mapboxMap;
+  PointAnnotationManager? _pointAnnotationManager;
+  PointAnnotation? _activePin;
   bool _tokenApplied = false;
   bool _locating = false;
 
@@ -83,6 +85,13 @@ class _MapboxBasicWidgetState extends State<MapboxBasicWidget> {
   }
 
   void _onMapCreated(MapboxMap mapboxMap) {
+    final previousMap = _mapboxMap;
+    if (previousMap != null && previousMap != mapboxMap) {
+      previousMap.gestures.removeOnMapLongClickListener(_handleMapLongClick);
+      _pointAnnotationManager = null;
+      _activePin = null;
+    }
+
     _mapboxMap = mapboxMap;
 
     // Enable Mapbox "blue dot" (location puck)
@@ -94,6 +103,51 @@ class _MapboxBasicWidgetState extends State<MapboxBasicWidget> {
         ),
       );
     } catch (_) {}
+
+    mapboxMap.gestures.addOnMapLongClickListener(_handleMapLongClick);
+    _ensurePointAnnotationManager();
+  }
+
+  Future<void> _ensurePointAnnotationManager() async {
+    final map = _mapboxMap;
+    if (map == null || _pointAnnotationManager != null) return;
+
+    _pointAnnotationManager =
+        await map.annotations.createPointAnnotationManager();
+  }
+
+  Future<bool> _handleMapLongClick(gt.Point point) async {
+    await _placeOrMovePin(point);
+    return true;
+  }
+
+  Future<void> _placeOrMovePin(gt.Point point) async {
+    await _ensurePointAnnotationManager();
+    final manager = _pointAnnotationManager;
+    if (manager == null) return;
+
+    if (_activePin != null) {
+      await manager.delete(_activePin!);
+      _activePin = null;
+    }
+
+    _activePin = await manager.create(
+      PointAnnotationOptions(
+        geometry: point,
+        iconImage: 'marker-15',
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    final map = _mapboxMap;
+    if (map != null) {
+      map.gestures.removeOnMapLongClickListener(_handleMapLongClick);
+    }
+    _pointAnnotationManager = null;
+    _activePin = null;
+    super.dispose();
   }
 
   Future<void> _zoomBy(double delta) async {
